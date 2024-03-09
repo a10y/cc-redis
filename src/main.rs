@@ -26,10 +26,10 @@ static PONG: &[u8] = b"+PONG\r\n";
 
 /// process a single stream, read a command and send back the value.
 fn handle_stream(stream: TcpStream) -> anyhow::Result<()> {
-    let mut command = String::new();
     let mut stream = BufReader::new(stream);
 
     loop {
+        let mut command = String::new();
         let n_bytes = stream.read_line(&mut command)?;
 
         println!("COMMAND: {command}");
