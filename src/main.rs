@@ -1,14 +1,10 @@
-use std::io;
-use std::io::{BufRead, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 // Uncomment this block to pass the first stage
 use std::net::{TcpListener, TcpStream};
 
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
-
-    // Uncomment this block to pass the first stage
-    //
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
 
     for stream in listener.incoming() {
@@ -26,26 +22,25 @@ fn main() {
     }
 }
 
-static PONG: &'static str = "+PONG\r\n";
+static PONG: &[u8] = b"+PONG\r\n";
 
 /// process a single stream, read a command and send back the value.
-fn handle_stream(mut stream: TcpStream) -> anyhow::Result<()> {
-    let mut commands = io::Cursor::new(&stream);
-    loop {
-        // Receive command
-        let mut command = String::new();
-        let n_read = commands.read_line(&mut command)?;
+fn handle_stream(stream: TcpStream) -> anyhow::Result<()> {
+    let mut command = String::new();
+    let mut stream = BufReader::new(stream);
 
-        if n_read == 0 {
-            // No command
+    loop {
+        let n_bytes = stream.read_line(&mut command)?;
+        if n_bytes == 0 {
             break;
         }
 
-        // Send the response
-        println!("received command {command:?}");
-
-        stream.write(PONG.as_bytes())?;
+        println!("received command {command}");
+        // Send the value back
+        stream.get_mut().write(PONG)?;
     }
+
+    println!("empty input");
 
     Ok(())
 }
