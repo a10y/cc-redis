@@ -35,9 +35,9 @@ fn handle_stream(stream: TcpStream) -> anyhow::Result<()> {
             break;
         }
 
-        println!("received command {command}");
-        // Send the value back
-        stream.get_mut().write(PONG)?;
+        if command.to_ascii_lowercase().starts_with("ping") {
+            stream.get_mut().write(PONG)?;
+        }
     }
 
     println!("empty input");
