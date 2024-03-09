@@ -31,6 +31,9 @@ fn handle_stream(stream: TcpStream) -> anyhow::Result<()> {
 
     loop {
         let n_bytes = stream.read_line(&mut command)?;
+
+        println!("COMMAND: {command}");
+
         if n_bytes == 0 {
             break;
         }
