@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
+use std::sync::{Arc, Mutex};
 
 use redis_starter_rust::proto::core::Protocol;
 use redis_starter_rust::proto::resp2::{ClientMessage, ProtocolError, Resp2, ServerMessage};
@@ -8,12 +10,16 @@ fn main() {
     println!("Logs from your program will appear here!");
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
 
+    let dict: HashMap<String, String> = HashMap::new();
+    let shared_dict = Arc::new(Mutex::new(dict));
+
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 // Spawn a thread per client.
+                let shared_dict = shared_dict.clone();
                 std::thread::spawn(move || {
-                    handle_stream(stream).expect("handling client message parsing");
+                    handle_stream(stream, shared_dict).expect("handling client message parsing");
                 });
             }
             Err(e) => {
@@ -24,7 +30,10 @@ fn main() {
 }
 
 /// process a single stream, read a command and send back the value.
-fn handle_stream(mut stream: TcpStream) -> anyhow::Result<()> {
+fn handle_stream(
+    mut stream: TcpStream,
+    shared_dict: Arc<Mutex<HashMap<String, String>>>,
+) -> anyhow::Result<()> {
     let mut protocol = Resp2::from(&mut stream)?;
 
     loop {
@@ -56,6 +65,25 @@ fn handle_stream(mut stream: TcpStream) -> anyhow::Result<()> {
             ClientMessage::Command(inner) => {
                 // Nothing to do. We do not handle this.
                 println!("We do not implement 'COMMAND {inner}', ignoring.");
+            }
+            ClientMessage::Set(name, value) => {
+                {
+                    let mut locked = shared_dict.lock().unwrap();
+                    locked.insert(name, value);
+                }
+
+                protocol.write_message(&ServerMessage::SimpleString("OK".to_string()))?;
+            }
+            ClientMessage::Get(name) => {
+                let value = {
+                    let locked = shared_dict.lock().unwrap();
+                    locked
+                        .get(&name)
+                        .expect("GET item should exist in shared_dict")
+                        .clone()
+                };
+
+                protocol.write_message(&ServerMessage::BulkString(value))?;
             }
         }
     }

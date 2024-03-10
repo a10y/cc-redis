@@ -49,6 +49,8 @@ pub enum ClientMessage {
     Ping,
     Echo(String),
     Command(String),
+    Set(String, String),
+    Get(String),
 }
 
 #[derive(Debug, Clone)]
@@ -199,6 +201,17 @@ impl<S: AsRef<str>> TryFrom<Vec<S>> for ClientMessage {
                 let rest = value[1].as_ref().to_string();
 
                 Ok(ClientMessage::Command(rest))
+            }
+            "set" => {
+                let name = value[1].as_ref().to_string();
+                let value = value[2].as_ref().to_string();
+
+                Ok(ClientMessage::Set(name, value))
+            }
+            "get" => {
+                let rest = value[1].as_ref().to_string();
+
+                Ok(ClientMessage::Get(rest))
             }
             _ => Err(anyhow::anyhow!("Invalid command")),
         }
