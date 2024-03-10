@@ -49,12 +49,18 @@ pub enum ClientMessage {
     Ping,
     Echo(String),
     Command(String),
-    Set(String, String),
+    Set(String, String, SetOptions),
     Get(String),
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SetOptions {
+    pub px: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
 pub enum ServerMessage {
+    NullString,
     BulkString(String),
     SimpleString(String),
 }
@@ -102,6 +108,12 @@ impl<T: Read + Write> super::core::Protocol for Resp2<T> {
 
     fn write_message(&mut self, msg: &Self::ServerMessage) -> Result<(), Self::Error> {
         match msg {
+            ServerMessage::NullString => {
+                self.writer.write(b"$-1\r\n")?;
+                self.writer.flush()?;
+
+                Ok(())
+            }
             ServerMessage::BulkString(bulk) => {
                 // Send an '$', the length of the string, \r\n, the text, and then \r\n
                 let binary = bulk.as_bytes();
@@ -204,9 +216,25 @@ impl<S: AsRef<str>> TryFrom<Vec<S>> for ClientMessage {
             }
             "set" => {
                 let name = value[1].as_ref().to_string();
-                let value = value[2].as_ref().to_string();
+                let val = value[2].as_ref().to_string();
 
-                Ok(ClientMessage::Set(name, value))
+                let mut options = SetOptions::default();
+                if value.len() >= 5 {
+                    let option_key = value[3].as_ref().to_ascii_lowercase();
+                    let option_value = value[4].as_ref().to_ascii_lowercase();
+
+                    match option_key.as_str() {
+                        "px" => {
+                            let option_value = u32::from_str(option_value.as_str())?;
+                            options.px = Some(option_value);
+                        }
+                        _ => {
+                            println!("unrecognized option {option_key}: ignoring");
+                        }
+                    }
+                }
+
+                Ok(ClientMessage::Set(name, val, options))
             }
             "get" => {
                 let rest = value[1].as_ref().to_string();
