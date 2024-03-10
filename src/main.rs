@@ -1,6 +1,7 @@
-use std::io::{BufRead, BufReader, Write};
-// Uncomment this block to pass the first stage
 use std::net::{TcpListener, TcpStream};
+
+use redis_starter_rust::proto::core::Protocol;
+use redis_starter_rust::proto::resp2::{ClientMessage, ProtocolError, Resp2, ServerMessage};
 
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -12,7 +13,7 @@ fn main() {
             Ok(stream) => {
                 // Spawn a thread per client.
                 std::thread::spawn(move || {
-                    handle_stream(stream).unwrap();
+                    handle_stream(stream).expect("handling client message parsing");
                 });
             }
             Err(e) => {
@@ -22,28 +23,40 @@ fn main() {
     }
 }
 
-static PONG: &[u8] = b"+PONG\r\n";
-
 /// process a single stream, read a command and send back the value.
-fn handle_stream(stream: TcpStream) -> anyhow::Result<()> {
-    let mut stream = BufReader::new(stream);
+fn handle_stream(mut stream: TcpStream) -> anyhow::Result<()> {
+    let mut protocol = Resp2::from(&mut stream)?;
 
     loop {
-        let mut command = String::new();
-        let n_bytes = stream.read_line(&mut command)?;
+        let msg = match protocol.read_message() {
+            Ok(msg) => msg,
+            Err(inner) => {
+                return match inner {
+                    ProtocolError::ClientConnectionClosed => {
+                        println!("Client disconnected");
 
-        println!("COMMAND: {command}");
+                        Ok(())
+                    }
+                    _ => Err(inner.into()),
+                };
+            }
+        };
 
-        if n_bytes == 0 {
-            break;
-        }
+        println!("received {msg:?}");
 
-        if command.to_ascii_lowercase().starts_with("ping") {
-            stream.get_mut().write(PONG)?;
+        match msg {
+            ClientMessage::Ping => {
+                println!("Replying with PONG");
+                protocol.write_message(&ServerMessage::SimpleString("PONG".to_string()))?;
+            }
+            ClientMessage::Echo(echo) => {
+                println!("Replying with {echo}");
+                protocol.write_message(&ServerMessage::BulkString(echo))?;
+            }
+            ClientMessage::Command(inner) => {
+                // Nothing to do. We do not handle this.
+                println!("We do not implement 'COMMAND {inner}', ignoring.");
+            }
         }
     }
-
-    println!("empty input");
-
-    Ok(())
 }
